@@ -28,7 +28,8 @@ class UserController extends Controller
             $data = [
                 'roles' => $roles,
                 'users' => $users,
-                'pending_action' => $passwordResetReq
+                'pending_action' => $passwordResetReq,
+                'active_sidebar' => [4, 1]
             ];
 
             return view("user-settings", $data);
@@ -45,6 +46,7 @@ class UserController extends Controller
 
             $data = [
                 'users' => $users,
+                'active_sidebar' => [4, 2]
             ];
 
             return view("user-settings-inactive", $data);
@@ -86,6 +88,7 @@ class UserController extends Controller
         $user = User::find($request->user_id);
         $data = [
             'user' => $user,
+            'active_sidebar' => [0, 0]
         ];
 
         return view('user-detail', $data);

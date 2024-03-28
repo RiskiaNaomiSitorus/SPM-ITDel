@@ -6,9 +6,10 @@ use App\Models\DocumentModel;
 use App\Models\DocumentTypeModel;
 use App\Models\RoleModel;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\File;
-
+use App\Models\HeroDocument;
 use Illuminate\Support\Str;
 use App\Models\User;
 use Symfony\Component\HttpFoundation\File\Exception\IniSizeFileException;
@@ -19,8 +20,34 @@ class DocumentController extends Controller
 {
     public function getDocumentManagementView()
     {
-
+        // Ambil 10 dokumen terbaru
         $documents = DocumentModel::all();
+
+        $uploadedUsers = User::whereIn('id', $documents->pluck('created_by'))->get();
+        $jenis_dokumen = DocumentTypeModel::all();
+        $roles = RoleModel::all();
+        $documenthero = HeroDocument::first();
+        $documentheroIds = $documenthero->pluck('id');
+
+
+        // dd($documenthero);
+        $data = [
+            'documents' => $documents,
+            'uploadedUsers' => $uploadedUsers,
+            'jenis_dokumen' => $jenis_dokumen,
+            'roles' => $roles,
+            'active_sidebar' => [5, 0],
+            'documenthero'=> $documenthero,
+            'documentheroIds' => $documentheroIds,
+        ];
+
+        return view('document-management', $data);
+    }
+
+    public function getDocumentManagementViewAll()
+    {
+
+        $documents = DocumentModel::orderBy('created_at', 'desc')->get();
 
         $uploadedUsers = User::whereIn('id', $documents->pluck('created_by'))->get();
         $jenis_dokumen = DocumentTypeModel::all();
@@ -35,8 +62,9 @@ class DocumentController extends Controller
 
         ];
 
-        return view('document-management', $data);
+        return view('document-view-all', $data);
     }
+
 
     // public function getDocumentManagement()
     // {
@@ -79,6 +107,7 @@ class DocumentController extends Controller
             'uploadedUsers' => $uploadedUsers,
             'jenis_dokumen' => $jenis_dokumen,
             'roles' => $roles,
+            'active_sidebar' => [0, 0]
         ];
         return view('components/upload-file-modal', $data);
     }
@@ -109,6 +138,7 @@ class DocumentController extends Controller
                 'uploadedUsers' => $uploadedUsers,
                 'jenis_dokumen' => $jenis_dokumen,
                 'roles' => $roles,
+                'active_sidebar' => [0, 0]
             ];
 
             return view('components/edit-file-modal', $data);
@@ -120,241 +150,253 @@ class DocumentController extends Controller
 
 
     public function uploadFile(Request $request)
-    {     $editor = null;
-        // $status = null;
-        $accessor = null;
-        $menggantikanDokumenImploded = null; // Definisikan variabel sebelum penggunaan
+{
+    $editor = null;
+    $parent = null;
+    $accessor = null;
+    $menggantikanDokumenImploded = null; // Definisikan variabel sebelum penggunaan
 
-        $validator = Validator::make($request->all(), [
-            'file' => 'nullable|file|mimes:pdf,doc,docx,xls,xlsx|max:30720',
-            'nomor_dokumen' => 'required|unique:documents,nomor_dokumen',
-
-            'start_date' => [
-                'required',
-                'date',
-                function ($attribute, $value, $fail) use ($request) {
-                    if ($request->filled('end_date')) {
-                        if ($value >= $request->input('end_date')) {
-                            $fail('Tanggal mulai harus lebih kecil dari tanggal akhir.');
-                        }
+    $validator = Validator::make($request->all(), [
+        'file' => 'nullable|file|mimes:pdf,doc,docx,xls,xlsx|max:30720',
+        'nomor_dokumen' => 'required|unique:documents,nomor_dokumen',
+        'start_date' => [
+            'required',
+            'date',
+            function ($attribute, $value, $fail) use ($request) {
+                if ($request->filled('end_date')) {
+                    if ($value >= $request->input('end_date')) {
+                        $fail('Tanggal mulai harus lebih kecil dari tanggal akhir.');
                     }
                 }
-            ],
-            'tipe_dokumen' => 'required',
-            'can_see_by' => 'required',
-            'link' => ['nullable', 'url'],
-            'menggantikan_dokumen' => [
-                // Validasi tambahan untuk memastikan bahwa dokumen yang digantikan memiliki tipe dokumen yang sama
-                function ($attribute, $value, $fail) use ($request) {
-                    if (is_array($value)) {
-                        foreach ($value as $documentId) {
-                            $dokumenYangDigantikan = DocumentModel::find($documentId);
-                            if ($dokumenYangDigantikan && $dokumenYangDigantikan->tipe_dokumen != $request->tipe_dokumen) {
-                                $fail('Dokumen yang digantikan harus memiliki tipe dokumen yang sama.');
-                            }
-                        }
-                    }
-                },
-            ],
-        ], [
-            'file.max' => 'Ukuran file melebihi batas maksimum unggah 30 MB.',
-            'nomor_dokumen.unique' => 'Nomor dokumen sudah digunakan.',
-            'start_date.required' => 'Tanggal mulai harus diisi.',
-            'start_date.before' => 'Tanggal mulai harus lebih kecil dari tanggal akhir.',
-            'end_date.required' => 'Tanggal akhir harus diisi.',
-            'tipe_dokumen.required' => 'Tipe dokumen harus diisi.',
-            'can_see_by.required' => 'Pilihan untuk dapat dilihat atau tidak harus dipilih.',
-            'link.url' => 'Link dokumen tidak valid.'
-        ]);
-
-        if ($validator->fails()) {
-            return redirect()->route('documentManagement')->with('toastData', ['success' => false, 'text' => $validator->errors()->first()]);
-        }
-
-        // Upload file and process document data storage if file is provided
-        if ($request->hasFile('file')) {
-            $file = $request->file('file');
-            $documentType = DocumentTypeModel::find($request->tipe_dokumen);
-            $documentTypeAbbreviation = $documentType ? $documentType->singkatan : '';
-            $nameWithoutSpaces = str_replace(' ', '_', $request->name);
-
-            // Mendapatkan ekstensi file
-            $fileExtension = $file->getClientOriginalExtension();
-
-            // Membentuk nama file dengan ekstensi
-            $filename = $documentTypeAbbreviation . '_' . $nameWithoutSpaces . '.' . $fileExtension;
-
-            // Set status based on menggantikan_dokumen
-            // $status = $request->menggantikan_dokumen ? false : true;
-
-            // Convert array to string for 'give_access_to' column
-            $giveAccessTo = $request->input('give_access_to', []);
-            $accessor = is_array($giveAccessTo) ? implode(';', $giveAccessTo) : $giveAccessTo;
-
-            $giveEditTo = $request->input('give_edit_access_to', []);
-            $editor = is_array($giveEditTo) ? implode(';', $giveEditTo) : $giveEditTo;
-
-            // Convert array to string for 'menggantikan_dokumen' column
-            $menggantikanDokumen = $request->input('menggantikan_dokumen', []);
-            $menggantikanDokumenImploded = is_array($menggantikanDokumen) ? implode(',', $menggantikanDokumen) : $menggantikanDokumen;
-
-            // Simpan file dengan nama baru
-            $file->move(public_path('/src/documents/'), $filename);
-        } else {
-            // If no file is provided, set filename and directory to null
-            $filename = null;
-        }
-
-        // Create document record
-       // Create document record
-// Create document record
-        $document = DocumentModel::create([
-            'name' => $request->name,
-            'nama_dokumen' => $filename ?? 'default_filename.pdf', // Pastikan nilai default yang sesuai jika $filename null
-            'nomor_dokumen' => $request->nomor_dokumen,
-            'deskripsi' => $request->deskripsi,
-            'directory' => $filename ? '/src/documents/' . $filename : null,
-            'created_by' => auth()->user()->id,
-            // 'status' => $status,
-            'menggantikan_dokumen' => $menggantikanDokumenImploded,
-            'year' => $request->year,
-            'tipe_dokumen' => $request->tipe_dokumen,
-            'start_date' => $request->start_date,
-            'end_date' => $request->end_date,
-            'keterangan_status' => true,
-            'give_access_to' => $accessor ?? 'default_user', // Pastikan nilai default yang sesuai jika $accessor null
-            'give_edit_access_to' => $editor,
-            'can_see_by' => $request->can_see_by,
-            'link' => $request->link,
-        ]);
-
-
-
-        // Update keterangan_status based on start_date and end_date
-        $currentDateTime = now();
-        if ($request->start_date <= $currentDateTime && (!$request->end_date || $request->end_date >= $currentDateTime)) {
-            $document->keterangan_status = true;
-        }
-
-        $document->save();
-
-        return redirect()->route('documentManagement')->with('toastData', ['success' => true, 'text' => 'File berhasil diunggah!']);
-    }
-
-    public function updateDocument(Request $request, $id)
-    {
-        // Validasi data masukan
-        $validator = Validator::make($request->all(), [
-            'name' => 'required',
-            'nomor_dokumen' => [
-                'required',
-                Rule::unique('documents')->ignore($id),
-            ],
-            'start_date' => ['required', 'date', $request->input('end_date') ? 'before:end_date' : ''],
-            'tipe_dokumen' => 'required',
-            'can_see_by' => 'required',
-            'file' => 'nullable|file|mimes:pdf,doc,docx,xls,xlsx|max:30720',
-            'link' => ['nullable', 'url'],
-            'menggantikan_dokumen.*' => [
-                // Validasi tambahan untuk memastikan bahwa dokumen yang digantikan memiliki tipe dokumen yang sama
-                function ($attribute, $value, $fail) use ($request) {
-                    if ($value) {
-                        $dokumenYangDigantikan = DocumentModel::find($value);
+            }
+        ],
+        'tipe_dokumen' => 'required',
+        'can_see_by' => 'required',
+        'link' => ['nullable', 'url'],
+        'menggantikan_dokumen' => [
+            // Validasi tambahan untuk memastikan bahwa dokumen yang digantikan memiliki tipe dokumen yang sama
+            function ($attribute, $value, $fail) use ($request) {
+                if (is_array($value)) {
+                    foreach ($value as $documentId) {
+                        $dokumenYangDigantikan = DocumentModel::find($documentId);
                         if ($dokumenYangDigantikan && $dokumenYangDigantikan->tipe_dokumen != $request->tipe_dokumen) {
                             $fail('Dokumen yang digantikan harus memiliki tipe dokumen yang sama.');
                         }
                     }
-                },
-            ],
-        ], [
-            'name.required' => 'Nama dokumen harus diisi.',
-            'nomor_dokumen.unique' => 'Nomor dokumen sudah digunakan.',
-            'start_date.required' => 'Tanggal mulai harus diisi.',
-            'start_date.before' => 'Tanggal mulai harus lebih kecil dari tanggal akhir.',
-    
-            'tipe_dokumen.required' => 'Tipe dokumen harus diisi.',
-            'can_see_by.required' => 'Pilihan untuk dapat dilihat atau tidak harus dipilih.',
-            'file.max' => 'Ukuran file melebihi batas maksimum unggah 30 MB.',
-            'link.url' => 'Link dokumen tidak valid.',
-        ]);
-    
-        // Jika validasi gagal, kembalikan dengan pesan kesalahan
-        if ($validator->fails()) {
-            return redirect()->route('documentManagement', $id)->with('toastData', ['success' => false, 'text' => $validator->errors()->first()]);
-        }
-    
-        // Cari dokumen yang akan diperbarui
-        $document = DocumentModel::findOrFail($id);
-    
-        // Hapus file lama jika ada
-        if ($request->hasFile('file') && $document->directory) {
-            // Hapus file lama dari sistem penyimpanan
-            if (File::exists(public_path($document->directory))) {
-                File::delete(public_path($document->directory));
-            }
-    
-            // Setel direktori dokumen menjadi null karena file lama dihapus
-            $document->directory = null;
-            $document->nama_dokumen = null;
-        }
-    
-        // Proses file baru jika ada yang diunggah
-        if ($request->hasFile('file')) {
-            // Lakukan pengungahan file baru
-            $file = $request->file('file');
-            $documentType = DocumentTypeModel::find($request->tipe_dokumen);
-            $documentTypeAbbreviation = $documentType ? $documentType->singkatan : '';
-            $nameWithoutSpaces = Str::slug($request->name);
-    
-            // Mendapatkan ekstensi file
-            $fileExtension = $file->getClientOriginalExtension();
-    
-            // Membentuk nama file baru dengan ekstensi
-            $filename = $documentTypeAbbreviation . '_' . $nameWithoutSpaces . '.' . $fileExtension;
-    
-            // Simpan file dengan nama baru
-            $file->move(public_path('/src/documents/'), $filename);
-    
-            // Setel nama dan direktori dokumen baru
-            $document->nama_dokumen = $filename;
-            $document->directory = '/src/documents/' . $filename;
-        }
-    
-        // Simpan perubahan data dokumen
-        $document->keterangan_berlaku = $request->keterangan_berlaku;
-        $document->name = $request->name;
-        $document->nomor_dokumen = $request->nomor_dokumen;
-        $document->deskripsi = $request->deskripsi;
-        // $document->status = $request->has('menggantikan_dokumen') ? false : true;
-        $document->year = $request->year;
-        $document->tipe_dokumen = $request->tipe_dokumen;
-        $document->start_date = $request->start_date;
-        $document->end_date = $request->end_date;
-        $document->give_access_to = implode(';', $request->input('give_access_to', []));
-        $document->give_edit_access_to = implode(';', $request->input('give_edit_access_to', []));
-        $document->can_see_by = $request->can_see_by ?? $document->can_see_by; // Menyesuaikan agar nilai default dipertahankan jika tidak ada input yang diberikan
-        $document->link = $request->link;
-    
-        // Konversi input array menjadi string untuk kolom 'menggantikan_dokumen'
-        $menggantikanDokumen = $request->input('menggantikan_dokumen', []);
-        $menggantikanDokumenImploded = is_array($menggantikanDokumen) ? implode(',', $menggantikanDokumen) : $menggantikanDokumen;
-        $document->menggantikan_dokumen = $menggantikanDokumenImploded;
-    
-        // Update keterangan_status based on start_date and end_date
-        $currentDateTime = now();
-        if ($request->start_date <= $currentDateTime && (!$request->end_date || $request->end_date >= $currentDateTime)) {
-            $document->keterangan_status = true;
-        } else {
-            $document->keterangan_status = false;
-        }
-    
-        // Simpan perubahan ke database
-        $document->save();
-    
-        // Redirect dengan pesan sukses
-        return redirect()->route('documentManagement', $id)->with('toastData', ['success' => true, 'text' => 'File berhasil diperbarui!']);
+                }
+            },
+        ],
+    ], [
+        'file.max' => 'Ukuran file melebihi batas maksimum unggah 30 MB.',
+        'nomor_dokumen.unique' => 'Nomor dokumen sudah digunakan.',
+        'start_date.required' => 'Tanggal mulai harus diisi.',
+        'start_date.before' => 'Tanggal mulai harus lebih kecil dari tanggal akhir.',
+        'end_date.required' => 'Tanggal akhir harus diisi.',
+        'tipe_dokumen.required' => 'Tipe dokumen harus diisi.',
+        'can_see_by.required' => 'Pilihan untuk dapat dilihat atau tidak harus dipilih.',
+        'link.url' => 'Link dokumen tidak valid.'
+    ]);
+
+    if ($validator->fails()) {
+        return redirect()->route('documentManagement')->with('toastData', ['success' => false, 'text' => $validator->errors()->first()]);
     }
-    
+
+    // Upload file and process document data storage if file is provided
+    if ($request->hasFile('file')) {
+        $file = $request->file('file');
+        $documentType = DocumentTypeModel::find($request->tipe_dokumen);
+        $documentTypeAbbreviation = $documentType ? $documentType->singkatan : '';
+        $nameWithoutSpaces = str_replace(' ', '_', $request->name);
+
+        // Mendapatkan ekstensi file
+        $fileExtension = $file->getClientOriginalExtension();
+
+        // Membentuk nama file dengan ekstensi
+        $filename = $documentTypeAbbreviation . '_' . $nameWithoutSpaces . '.' . $fileExtension;
+
+        // Set status based on menggantikan_dokumen
+        // $status = $request->menggantikan_dokumen ? false : true;
+
+        // Convert array to string for 'give_access_to' column
+
+
+        // Simpan file dengan nama baru
+        $file->move(public_path('/src/documents/'), $filename);
+    } else {
+        // If no file is provided, set filename and directory to null
+        $filename = null;
+    }
+    $giveAccessTo = $request->input('give_access_to', []);
+    $accessor = is_array($giveAccessTo) ? implode(';', $giveAccessTo) : $giveAccessTo;
+
+    $giveEditTo = $request->input('give_edit_access_to', []);
+    $editor = is_array($giveEditTo) ? implode(';', $giveEditTo) : $giveEditTo;
+
+    // Convert array to string for 'menggantikan_dokumen' column
+    $menggantikanDokumen = $request->input('menggantikan_dokumen', []);
+    $menggantikanDokumenImploded = is_array($menggantikanDokumen) ? implode(',', $menggantikanDokumen) : $menggantikanDokumen;
+
+    // Jika ada dokumen yang digantikan, tentukan parent
+    if (!empty($menggantikanDokumen)) {
+        $dokumenYangDigantikanId = end($menggantikanDokumen);
+        $dokumenYangDigantikan = DocumentModel::find($dokumenYangDigantikanId);
+        if ($dokumenYangDigantikan) {
+            // Jika parent dari dokumen yang digantikan adalah null, ambil parent dari dokumen yang digantikan
+            $parent = $dokumenYangDigantikan->parent ?? $dokumenYangDigantikan->id;
+        }
+    }
+
+    $document = DocumentModel::create([
+        'name' => $request->name,
+        'nama_dokumen' => $filename ?? 'default_filename.pdf', // Pastikan nilai default yang sesuai jika $filename null
+        'nomor_dokumen' => $request->nomor_dokumen,
+        'deskripsi' => $request->deskripsi,
+        'directory' => $filename ? '/src/documents/' . $filename : null,
+        'created_by' => auth()->user()->id,
+        // 'status' => $status,
+        'menggantikan_dokumen' => $menggantikanDokumenImploded,
+        'parent' => $parent,
+        'year' => $request->year,
+        'tipe_dokumen' => $request->tipe_dokumen,
+        'start_date' => $request->start_date,
+        'end_date' => $request->end_date,
+        'keterangan_status' => true,
+        'give_access_to' => $accessor ?? 'default_user', // Pastikan nilai default yang sesuai jika $accessor null
+        'give_edit_access_to' => $editor,
+        'can_see_by' => $request->can_see_by,
+        'link' => $request->link,
+    ]);
+
+    // Update keterangan_status based on start_date and end_date
+    $currentDateTime = now();
+    if ($request->start_date <= $currentDateTime && (!$request->end_date || $request->end_date >= $currentDateTime)) {
+        $document->keterangan_status = true;
+    }
+
+    $document->save();
+
+    return redirect()->route('documentManagement')->with('toastData', ['success' => true, 'text' => 'File berhasil diunggah!']);
+}
+
+
+
+public function updateDocument(Request $request, $id)
+{
+    // Validasi data masukan
+    $validator = Validator::make($request->all(), [
+        'name' => 'required',
+        'nomor_dokumen' => [
+            'required',
+            Rule::unique('documents')->ignore($id),
+        ],
+        'start_date' => ['required', 'date', $request->input('end_date') ? 'before:end_date' : ''],
+        'tipe_dokumen' => 'required',
+        'can_see_by' => 'required',
+        'file' => 'nullable|file|mimes:pdf,doc,docx,xls,xlsx|max:30720',
+        'link' => ['nullable', 'url'],
+        'menggantikan_dokumen.*' => [
+            // Validasi tambahan untuk memastikan bahwa dokumen yang digantikan memiliki tipe dokumen yang sama
+            function ($attribute, $value, $fail) use ($request) {
+                if ($value) {
+                    $dokumenYangDigantikan = DocumentModel::find($value);
+                    if ($dokumenYangDigantikan && $dokumenYangDigantikan->tipe_dokumen != $request->tipe_dokumen) {
+                        $fail('Dokumen yang digantikan harus memiliki tipe dokumen yang sama.');
+                    }
+                }
+            },
+        ],
+    ], [
+        'name.required' => 'Nama dokumen harus diisi.',
+        'nomor_dokumen.unique' => 'Nomor dokumen sudah digunakan.',
+        'start_date.required' => 'Tanggal mulai harus diisi.',
+        'start_date.before' => 'Tanggal mulai harus lebih kecil dari tanggal akhir.',
+        'tipe_dokumen.required' => 'Tipe dokumen harus diisi.',
+        'can_see_by.required' => 'Pilihan untuk dapat dilihat atau tidak harus dipilih.',
+        'file.max' => 'Ukuran file melebihi batas maksimum unggah 30 MB.',
+        'link.url' => 'Link dokumen tidak valid.',
+    ]);
+
+    // Jika validasi gagal, kembalikan dengan pesan kesalahan
+    if ($validator->fails()) {
+        return redirect()->route('documentManagement', $id)->with('toastData', ['success' => false, 'text' => $validator->errors()->first()]);
+    }
+
+    // Cari dokumen yang akan diperbarui
+    $document = DocumentModel::findOrFail($id);
+
+    // Hapus file lama jika ada
+    if ($request->hasFile('file') && $document->directory) {
+        // Hapus file lama dari sistem penyimpanan
+        if (File::exists(public_path($document->directory))) {
+            File::delete(public_path($document->directory));
+        }
+
+        // Setel direktori dokumen menjadi null karena file lama dihapus
+        $document->directory = null;
+        $document->nama_dokumen = null;
+    }
+
+    if ($request->hasFile('file')) {
+        // Lakukan pengungahan file baru
+        $file = $request->file('file');
+        $documentType = DocumentTypeModel::find($request->tipe_dokumen);
+        $documentTypeAbbreviation = $documentType ? $documentType->singkatan : '';
+        $nameWithoutSpaces = Str::slug($request->name);
+
+        // Mendapatkan ekstensi file
+        $fileExtension = $file->getClientOriginalExtension();
+
+        // Membentuk nama file baru dengan ekstensi
+        $filename = $documentTypeAbbreviation . '_' . $nameWithoutSpaces . '.' . $fileExtension;
+
+        // Simpan file dengan nama baru
+        $file->move(public_path('/src/documents/'), $filename);
+
+        // Setel nama dan direktori dokumen baru
+        $document->nama_dokumen = $filename;
+        $document->directory = '/src/documents/' . $filename;
+    }
+
+    $document->keterangan_berlaku = $request->keterangan_berlaku;
+    $document->name = $request->name;
+    $document->nomor_dokumen = $request->nomor_dokumen;
+    $document->deskripsi = $request->deskripsi;
+    $document->year = $request->year;
+    $document->tipe_dokumen = $request->tipe_dokumen;
+    $document->start_date = $request->start_date;
+    $document->end_date = $request->end_date;
+    $document->give_access_to = implode(';', $request->input('give_access_to', []));
+    $document->give_edit_access_to = implode(';', $request->input('give_edit_access_to', []));
+    $document->can_see_by = $request->can_see_by ?? $document->can_see_by;
+    $document->link = $request->link;
+
+    // Menentukan parent jika ada dokumen yang digantikan
+    $menggantikanDokumen = $request->input('menggantikan_dokumen', []);
+    $menggantikanDokumenImploded = is_array($menggantikanDokumen) ? implode(',', $menggantikanDokumen) : $menggantikanDokumen;
+    $document->menggantikan_dokumen = $menggantikanDokumenImploded;
+
+    if (!empty($menggantikanDokumen)) {
+        $dokumenYangDigantikanId = end($menggantikanDokumen);
+        $dokumenYangDigantikan = DocumentModel::find($dokumenYangDigantikanId);
+        if ($dokumenYangDigantikan) {
+            // Jika parent dari dokumen yang digantikan adalah null, ambil parent dari dokumen yang digantikan
+            $document->parent = $dokumenYangDigantikan->parent ?? $dokumenYangDigantikan->id;
+        }
+    }
+
+    // Update keterangan_status based on start_date and end_date
+    $currentDateTime = now();
+    if ($request->start_date <= $currentDateTime && (!$request->end_date || $request->end_date >= $currentDateTime)) {
+        $document->keterangan_status = true;
+    } else {
+        $document->keterangan_status = false;
+    }
+
+    // Simpan perubahan ke database
+    $document->save();
+    return redirect()->route('documentManagement', $id)->with('toastData', ['success' => true, 'text' => 'File berhasil diperbarui!']);
+    }
+
 
     public function removeDocument(Request $request)
     {
@@ -380,26 +422,46 @@ class DocumentController extends Controller
         $documents = DocumentModel::whereIn('give_access_to', ['0', '50'])
             ->orWhere('give_access_to', 'LIKE', '%1%')
             ->orderBy('created_at', 'desc')
+            ->take(10) // Mengambil hanya 10 dokumen
             ->get();
 
         $uploadedUsers = User::whereIn('id', $documents->pluck('created_by'))->get();
+        $documenthero = HeroDocument::all();
 
-        return view('document-view', ['documents' => $documents, 'uploadedUsers' => $uploadedUsers]);
+        return view('document-view', ['documents' => $documents, 'uploadedUsers' => $uploadedUsers,'documenthero'=> $documenthero]);
     }
+
 
     public function getDocumentDetail($id)
     {
         $document = DocumentModel::find($id);
         $jenis_dokumen = DocumentTypeModel::all();
         $uploadedUser = User::find($document->created_by);
-    
+        $documenthero = HeroDocument::all();
+
         // Mengembalikan tampilan dengan melewatkan data $jenis_dokumen
         return view('document-detail', [
-            'document' => $document, 
-            'uploadedUser' => $uploadedUser, 
+            'document' => $document,
+            'uploadedUser' => $uploadedUser,
+            'jenis_dokumen' => $jenis_dokumen,
+            'documenthero'=> $documenthero
+            // Melewatkan data jenis_dokumen ke tampilan
+        ]);
+    }
+
+    public function getDocumentDetailReplaced($id = 1)
+    {
+        $document = DocumentModel::find($id);
+        $jenis_dokumen = DocumentTypeModel::all();
+        $uploadedUser = User::find($document->created_by);
+
+        // Mengembalikan tampilan dengan melewatkan data $jenis_dokumen
+        return view('document-replaced-all', [
+            'document' => $document,
+            'uploadedUser' => $uploadedUser,
             'jenis_dokumen' => $jenis_dokumen, // Melewatkan data jenis_dokumen ke tampilan
         ]);
     }
-    
+
 
 }

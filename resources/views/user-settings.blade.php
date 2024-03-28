@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Users Settings</title>
+    <title>Pengaturan Pengguna</title>
 
     <link rel="stylesheet" href="{{ asset("plugins/select2/css/select2.min.css") }}">
     <!-- Google Font: Source Sans Pro -->
@@ -52,9 +52,8 @@
                 <div class="mb-3 d-flex flex-wrap" style="gap: 5px">
                     @if(AllServices::isCurrentRole("Admin"))
                         @include('components.add-user-manually-modal')
-                        @include('components.manage-role-modal')
                         <a href='{{ route('list-allowed-user') }}' class="btn btn-success">
-                            List Allowed User
+                            Daftar Pengguna yang Diizinkan
                         </a>
                         @include('components.list-action-pending-modal')
                     @endif
@@ -63,13 +62,13 @@
                 <table id="example1" class="table table-bordered table-striped">
                     <thead>
                     <tr>
-                        <th>Name</th>
-                        <th>Username</th>
-                        <th>Email</th>
-                        <th>Role</th>
-                        <th>IP Addr</th>
-                        <th>Phone</th>
-                        <th>Action</th>
+                        <th>Nama</th>
+                        <th>Nama Pengguna</th>
+                        <th>Alamat Email</th>
+                        <th>Peran</th>
+                        <th>Alamat IP</th>
+                        <th>No. Telepon</th>
+                        <th>Aksi</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -180,7 +179,7 @@
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h4 class="modal-title">Delete Confirmation Dialog</h4>
+                        <h4 class="modal-title">Nonaktifkan Akun</h4>
                         <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                             <span aria-hidden="true">&times;</span>
                         </button>
@@ -293,13 +292,10 @@
     }).buttons().container().appendTo('#example1_wrapper .col-md-6:eq(0)');
 
     let tableRole = new DataTable('#table-role', {
-        layout : {
-            topStart : 'search',
-            topEnd : null
-        },
         "responsive": true,
         "lengthChange": false,
         "autoWidth": false,
+        "pageLength": 10,
     });
 
 

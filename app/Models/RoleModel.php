@@ -9,9 +9,16 @@ class RoleModel extends Model
 {
     use HasFactory;
 
-    protected $table = 'role';
+    protected $table = 'roles';
 
     protected $fillable = [
-        'role'
+        'role',
+        'atasan_id',
+        'created_at',
+        'updated_at',
+        'bawahan',
+        'responsible_to',
+        'accountable_to',
+        'informable_to'
     ];
 }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    
+
     <title>Document</title>
 
     <!-- Google Font: Source Sans Pro -->
@@ -28,7 +28,7 @@
     <link rel="stylesheet" href="{{ asset("plugins/summernote/summernote-bs4.min.css") }}">
     <link rel="stylesheet" href="{{ asset("src/css/custom.css") }}">
     <link rel="stylesheet" href="{{ asset("splide/dist/css/splide.min.css") }}">
-    
+
     <!-- Meta tag viewport -->
     <meta name="viewport" content="width=device-width, initial-scale=1">
 </head>
@@ -39,23 +39,30 @@
     <div class="preloader flex-column justify-content-center align-items-center">
         <img class="animation__shake" src="{{ asset("src/img/logo.png") }}" alt="LogoDel" height="60" width="60">
     </div>
-    
+
     <!-- Navbar -->
     @include("components.guessnavbar")
     <!-- /.navbar -->
 
     <!-- Main Sidebar Container -->
     {{-- @include("components.sidebar") --}}
-    <section id="hero" class="background-under-navbar d-flex align-items-center justify-content-center">
-    <div class="container" data-aos="fade-up">
-        <div class="row justify-content-center" data-aos="fade-up" data-aos-delay="150">
-            <div class="col-xl-6 col-lg-8">
-                <h1>Document Management<span></span></h1>
-                <h2>disini anda dapat melihat setiap document yang tersedia</h2>
+    @foreach($documenthero as $s)
+        {{-- @php
+        dd($s->imagehero);
+        @endphp --}}
+        <section id="hero" class="background-under-navbar d-flex align-items-center justify-content-center"
+                 style="background: url('{{ asset('src/img/' . $s->imagehero) }}') top center; background-size: cover; position: relative;">
+            <div class="container" data-aos="fade-up">
+                <div class="row justify-content-center" data-aos="fade-up" data-aos-delay="150">
+                    <div class="col-xl-6 col-lg-8">
+                        <h1>{{ $s->titlehero }}</h1>
+                        <h2>{{ $s->descriptionhero }}</h2>
+                    </div>
+                </div>
             </div>
-        </div>
-    </div>
-</section>
+        </section>
+    @endforeach
+
 
 
     <!-- Content Wrapper. Contains page content -->
@@ -65,7 +72,7 @@
             <div class="content-header">
                 <div class="container-fluid">
                     <div class="row mb-2">
-                        
+
                     </div><!-- /.row -->
                 </div><!-- /.container-fluid -->
             </div>
@@ -90,16 +97,16 @@
                                 <div class="table-responsive">
                                     <table class="table table-borderless" style="width: 100%;">
                                         <thead class="table-primary custom-thead">
-                                            <tr>
-                                                <th scope="col">Doc Number</th>
-                                                <th scope="col">Doc Name</th>
-                                                <th scope="col">Uploaded By</th>
-                                                <th scope="col">Status</th>
-                                            </tr>
+                                        <tr>
+                                            <th scope="col">Doc Number</th>
+                                            <th scope="col">Doc Name</th>
+                                            <th scope="col">Uploaded By</th>
+                                            <th scope="col">Status</th>
+                                        </tr>
                                         </thead>
                                         <tbody>
-                                            @foreach($documents as $e)
-                                                @if($e->keterangan_status==1)
+                                        @foreach($documents as $e)
+                                            @if($e->keterangan_status==1)
                                                 <tr>
                                                     <td>{{ $e->nomor_dokumen }}</td>
                                                     <td>
@@ -115,20 +122,20 @@
                                                     </td>
                                                     @if(\Illuminate\Support\Facades\Auth::check())
                                                         <td>
-                                                            <span class="d-block">
-                                                                @php
-                                                                    $accessor = explode(";", $e->give_access_to);
-                                                                @endphp
-                                                                @foreach($accessor as $acc)
-                                                                    <span class="badge badge-primary">
-                                                                        @if($acc == 0)
-                                                                            All
-                                                                        @else
-                                                                            {{ \App\Models\RoleModel::find($acc)->role }}
-                                                                        @endif
-                                                                    </span>
-                                                                @endforeach
-                                                            </span>
+                                                        <span class="d-block">
+                                                            @php
+                                                                $accessor = explode(";", $e->give_access_to);
+                                                            @endphp
+                                                            @foreach($accessor as $acc)
+                                                                <span class="badge badge-primary">
+                                                                    @if($acc == 0)
+                                                                        All
+                                                                    @else
+                                                                        {{ \App\Models\RoleModel::find($acc)->role }}
+                                                                    @endif
+                                                                </span>
+                                                            @endforeach
+                                                        </span>
                                                         </td>
                                                     @endif
                                                     <td style="vertical-align: middle;">
@@ -152,8 +159,10 @@
                                                         </div>
                                                     </td>
                                                 </tr>
+                                                @php $counter++; @endphp <!-- Increment counter -->
                                                 @endif
-                                            @endforeach
+                                            @endif
+                                        @endforeach
                                         </tbody>
                                     </table>
                                 </div>
@@ -161,11 +170,15 @@
                         </div>
                     </div>
                 </div>
+                <!-- Tombol "See More" hanya tampil jika jumlah file lebih dari 10 -->
+                @if(count($documents) > 9)
+                    <div class="row justify-content-center mt-3">
+                        <div class="col-md-12 text-center">
+                            <a href="{{ route('documentManagementAll') }}" class="btn btn-primary">See More</a>
+                        </div>
+                    </div>
+                @endif
             </div>
-
-            @foreach ($documents as $e)
-
-            @endforeach
 
         </div>
         <!-- /.card-body -->

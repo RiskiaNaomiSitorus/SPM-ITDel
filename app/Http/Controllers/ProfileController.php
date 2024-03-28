@@ -6,6 +6,7 @@ use App\Http\Requests\ProfileUpdateRequest;
 use App\Models\RoleModel;
 use App\Models\User;
 use Illuminate\Contracts\View\Factory;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Application;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,8 +23,8 @@ class ProfileController extends Controller
      */
     public function edit(Request $request): View
     {
-
         $data = [
+            'active_sidebar' => [0,0],
             'roles' => RoleModel::all()
         ];
         return view('profile.edit', $data);
@@ -35,14 +36,22 @@ class ProfileController extends Controller
         $roles = implode(';', $request->roles);
 
         if ($user->role == $roles) {
-            $user->update([
-                'username' => $request->username,
-                'name' => $request->name,
-                'email' => $request->email,
-                'phone' => $request->phone,
-            ]);
+            try {
+                $user->update([
+                    'username' => $request->username,
+                    'name' => $request->name,
+                    'email' => $request->email,
+                    'phone' => $request->phone,
+                ]);
 
-            return \redirect()->route('profile')->with('toastData', ['success' => true, "text" => 'Success. Profile changed!']);
+                return redirect()->route('profile')->with('toastData', ['success' => true, "text" => 'Success. Profile changed!']);
+            }
+
+            catch (QueryException $e) {
+                if ($e->errorInfo[1] == 1062) {
+                    return redirect()->route('profile')->with('toastData', ['success' => false, "text" => 'Username sudah pernah digunakan sebelumnya!']);
+                }
+            }
         }
 
         else {
@@ -100,7 +109,11 @@ class ProfileController extends Controller
 
     public function changeProfilePict(): \Illuminate\Contracts\View\View|Application|Factory|\Illuminate\Contracts\Foundation\Application
     {
-        return \view('profile.change-profile-pict');
+        $data = [
+            'active_sidebar' => [0,0]
+        ];
+
+        return \view('profile.change-profile-pict', $data);
     }
 
     public function uploadProfilePict(Request $request): void

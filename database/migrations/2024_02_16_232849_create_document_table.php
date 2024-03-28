@@ -20,8 +20,10 @@
                         $table->string('directory')->nullable();
                         $table->string('give_access_to');
                         $table->string('give_edit_access_to')->nullable();
-                        $table->string('created_by');
+                        $table->unsignedBigInteger('created_by');
+                        $table->foreign('created_by')->references('id')->on('users');
                         $table->string('menggantikan_dokumen')->nullable();
+                        $table->string('parent')->nullable();
                         $table->integer('year');
                         $table->string('tipe_dokumen');
                         $table->timestamp('start_date');
@@ -31,6 +33,7 @@
                         $table->string('link')->nullable();
                         $table->boolean('keterangan_berlaku')->nullable();
                         $table->timestamps();
+
                     });
                 }
 

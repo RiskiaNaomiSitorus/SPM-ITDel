@@ -15,9 +15,15 @@ use App\Http\Controllers\TypeDocumentController;
 use App\Http\Controllers\ListAllowedUserController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\HeroDocumentController;
 use Illuminate\Support\Facades\Route;
 
+
 Route::middleware('guest')->group(function () {
+    Route::get('/', function () {
+        return view('dashboard');
+    })->name('dashboard');
+
     Route::get('login', [AuthenticatedSessionController::class, 'create'])
                 ->name('login');
 
@@ -40,10 +46,22 @@ Route::middleware('guest')->group(function () {
     Route::post('/self-register', [RegisteredUserController::class, 'registerSelfUser'])->name('self-register');
     Route::get('/getdocument', [DocumentController::class, 'getDocument'])->name('getdocument');
     Route::get('/view-document-detail/{id}', [DocumentController::class, 'getDocumentDetail'])->name('document-detail');
+
+    Route::get('/document/{id}', [HeroDocumentController::class, 'getView'])->name('document.view');
 });
 
 Route::middleware('auth')->group(function () {
+    Route::get('/dashboard', function () {
+        $data = [
+            'active_sidebar' => [1,0]
+        ];
+        return view('dashboard', $data);
+    })->name('admin-dashboard');
+
     Route::middleware('checkDocumentActive')->group(function () {
+        Route::get('/user-settings-active', [UserController::class, 'getUserSettings'])->name('user-settings-active');
+        Route::get('/user-settings-inactive', [UserController::class, 'getUserSettingsInactive'])->name('user-settings-inactive');
+
         Route::get('verify-email', EmailVerificationPromptController::class)
             ->name('verification.notice');
 
@@ -89,6 +107,9 @@ Route::middleware('auth')->group(function () {
         Route::post('/update-document/{id}', [DocumentController::class, 'updateDocument'])->name('updateDocument');
         Route::get('/document-add', [DocumentController::class, 'getDocumentManagementAdd'])->name('documentAdd');
         Route::get('/document/{id}/edit', [DocumentController::class, 'getDocumentManagementEdit'])->name('document.edit');
+        Route::get('/hero/{id}/edit', [HeroDocumentController::class, 'edit'])->name('hero.edit');
+        Route::put('/heroes/{id}', [HeroDocumentController::class, 'update'])->name('hero.update');
+
         /**
          * Route ini digunakan untuk mendapatkan halaman user detail
          */
@@ -113,6 +134,7 @@ Route::middleware('auth')->group(function () {
 
         Route::post('/change-password', [ProfileController::class, 'changePassword'])->name('change-password');
 
+        Route::get('/role-management', [RoleController::class, 'getHalamanRoleManagement'])->name('role-management');
         Route::post('/add-role', [RoleController::class, 'addRole'])->name('addRole');
         Route::delete('/remove-role', [RoleController::class, 'removeRole'])->name('removeRole');
     });
